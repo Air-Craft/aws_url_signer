@@ -9,14 +9,23 @@ String _buildQueryString(
     String sessionToken,
     String algorithm,
     String amzDate,
-    String credentialScope}) {
+    String credentialScope,
+    String expires = "15",
+    Map<String, String> additionalQuery
+    }) {
   final queryString = {
     "X-Amz-Algorithm": algorithm,
     "X-Amz-Credential": Uri.encodeComponent(accessKey + "/" + credentialScope),
     "X-Amz-Date": amzDate,
-    "X-Amz-Security-Token": Uri.encodeComponent(sessionToken),
+    "X-Amz-Expires": expires,
     "X-Amz-SignedHeaders": "host",
   };
+  if (sessionToken != null) {
+    queryString["X-Amz-Security-Token"] = Uri.encodeComponent(sessionToken);
+  }
+  if (additionalQuery is Map<String, String>) {
+    queryString.addAll(additionalQuery);
+  }
 
   final canonicalQueryString =
       queryString.entries.map((e) => "${e.key}=${e.value}").join("&");
@@ -26,14 +35,17 @@ String _buildQueryString(
 
 String getSignedWebSocketUrl(
     {String apiId,
+    String service = "execute-api",
+    String port = '8443',
     String region,
+    Map<String, String> queryParams,
     String stage,
     String accessKey,
     String secretKey,
-    String sessionToken}) {
+    String sessionToken,
+    bool debug=false}) {
   final method = "GET";
-  final service = "execute-api";
-  final host = "$apiId.$service.$region.amazonaws.com";
+  final host = "$apiId.$region.amazonaws.com" + (port != null ? ":$port" : "");
   final canonicalUri = "/$stage";
   final now = DateTime.now().toUtc();
 
@@ -58,6 +70,7 @@ String getSignedWebSocketUrl(
     algorithm: algorithm,
     amzDate: amzDate,
     credentialScope: credentialScope,
+    additionalQuery: queryParams
   );
 
   final payloadHash = sha256.convert(utf8.encode("")).toString();
@@ -71,12 +84,25 @@ String getSignedWebSocketUrl(
     payloadHash,
   ].join('\n');
 
+  if (debug) {
+    print("\nCanonical Request:");
+    print(canonicalRequest);
+    print("\n");
+  }
+
   final stringToSign = [
     algorithm,
     amzDate,
     credentialScope,
     sha256.convert(utf8.encode(canonicalRequest)).toString(),
   ].join('\n');
+
+  if (debug) {
+    print("\nString-to-Sign:");
+    print(stringToSign);
+    print("\n");
+  }
+
 
   final signingKey = credentialScopeArray.fold(utf8.encode('AWS4$secretKey'),
       (List<int> key, String s) {
